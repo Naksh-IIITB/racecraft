@@ -4,6 +4,7 @@ from racecraft.simulation.engine import (
     RaceState,
     Strategy,
     candidate_strategies,
+    evaluate_strategies,
     simulate_strategy,
 )
 
@@ -39,3 +40,13 @@ def test_degradation_multiplier_must_be_positive() -> None:
         simulate_strategy(
             state(), Strategy(None, None, "Stay out"), degradation_multiplier=0
         )
+
+
+def test_batch_evaluation_skips_invalid_ui_strategy() -> None:
+    results, failures = evaluate_strategies(
+        state(),
+        [Strategy(None, None, "Stay out"), Strategy(57, "SOFT", "Invalid")],
+        n_simulations=5,
+    )
+    assert len(results) == 1
+    assert failures and "Invalid" in failures[0]

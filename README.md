@@ -25,6 +25,8 @@ streamlit run app/streamlit_app.py
 pytest
 ```
 
+To bind specifically to local IPv6, run `make demo-ipv6`, then open [http://[::1]:8501](http://[::1]:8501).
+
 For live OpenF1 data, install `requests` (included), then run:
 
 ```bash

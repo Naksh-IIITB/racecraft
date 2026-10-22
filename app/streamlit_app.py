@@ -11,7 +11,7 @@ from racecraft.simulation.engine import (
     RaceState,
     Strategy,
     candidate_strategies,
-    simulate_strategy,
+    evaluate_strategies,
 )
 from racecraft.simulation.twin import PitPolicy, demo_grid, simulate_twin
 from racecraft.visualization.charts import strategy_chart
@@ -123,18 +123,22 @@ strategies = [
 ]
 # Preserve order while removing duplicate calls.
 strategies = list({(x.pit_lap, x.next_compound): x for x in strategies}.values())
-results = [
-    simulate_strategy(
-        state,
-        x,
-        n_simulations=runs,
-        safety_car_probability=sc_probability,
-        pit_lane_loss=circuit.pit_lane_loss,
-        degradation_multiplier=degradation_multiplier,
-        seed=2026,
+results, failed_strategies = evaluate_strategies(
+    state,
+    strategies,
+    n_simulations=runs,
+    safety_car_probability=sc_probability,
+    pit_lane_loss=circuit.pit_lane_loss,
+    degradation_multiplier=degradation_multiplier,
+    seed=2026,
+)
+if failed_strategies:
+    st.warning("Skipped invalid strategy inputs: " + " | ".join(failed_strategies))
+if not results:
+    st.error(
+        "No valid strategy could be evaluated. Reset the decision inputs and try again."
     )
-    for x in strategies
-]
+    st.stop()
 results.sort(key=lambda x: x.expected_finish)
 
 winner = results[0]

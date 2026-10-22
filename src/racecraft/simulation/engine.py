@@ -165,3 +165,17 @@ def candidate_strategies(state: RaceState, horizon: int = 12) -> list[Strategy]:
                 Strategy(lap, compound, f"Pit lap {lap} → {compound.title()}")
             )
     return choices
+
+
+def evaluate_strategies(
+    state: RaceState, strategies: list[Strategy], **simulation_kwargs: object
+) -> tuple[list[StrategyResult], list[str]]:
+    """Evaluate a batch without allowing one invalid UI action to crash the app."""
+    results: list[StrategyResult] = []
+    failures: list[str] = []
+    for strategy in strategies:
+        try:
+            results.append(simulate_strategy(state, strategy, **simulation_kwargs))
+        except (TypeError, ValueError) as error:
+            failures.append(f"{strategy.label}: {error}")
+    return results, failures

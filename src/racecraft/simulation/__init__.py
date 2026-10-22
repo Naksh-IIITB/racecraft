@@ -1,4 +1,4 @@
-from .engine import Strategy, StrategyResult, simulate_strategy
+from .engine import Strategy, StrategyResult, evaluate_strategies, simulate_strategy
 from .twin import DriverProfile, EventHazard, PitPolicy, TwinResult, simulate_twin
 
 __all__ = [
@@ -8,6 +8,7 @@ __all__ = [
     "Strategy",
     "StrategyResult",
     "TwinResult",
+    "evaluate_strategies",
     "simulate_strategy",
     "simulate_twin",
 ]
