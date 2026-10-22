@@ -16,10 +16,10 @@ from racecraft.simulation.engine import (
 from racecraft.simulation.twin import PitPolicy, demo_grid, simulate_twin
 from racecraft.visualization.charts import strategy_chart
 
-st.set_page_config(page_title="RaceCraft", page_icon="🏁", layout="wide")
-st.title("🏁 RaceCraft")
+st.set_page_config(page_title="RaceCraft Strategy Lab", page_icon="🏁", layout="wide")
+st.title("🏁 RaceCraft Strategy Lab")
 st.caption(
-    "Counterfactual strategy comparisons with explicit uncertainty—not claims of historical certainty."
+    "A decision simulator: compare every pit call against the same projected no-stop race baseline."
 )
 
 with st.sidebar:
@@ -70,6 +70,23 @@ with st.sidebar:
         0.005,
         help="Enter the recent green-flag lap-time loss you observed. It replaces the circuit prior.",
     )
+    st.subheader("Projected field")
+    field_gap = st.slider(
+        "Typical gap per position (sec)",
+        0.5,
+        5.0,
+        1.8,
+        0.1,
+        help="Use the live gaps around your car. Smaller gaps make a strategy time loss cost more positions.",
+    )
+    field_uncertainty = st.slider(
+        "Field uncertainty (sec)",
+        0.0,
+        10.0,
+        2.5,
+        0.5,
+        help="How much unknown rival pace and traffic could change the result.",
+    )
     runs = st.select_slider(
         "Monte Carlo runs", [250, 500, 1000, 2000, 5000], value=1000
     )
@@ -89,7 +106,7 @@ if current_lap != int(lap):
         f"Decision lap reset to {current_lap}: a pit call must leave at least one racing lap."
     )
 st.caption(
-    f"**{circuit_name}** · pit-loss prior: {circuit.pit_lane_loss:.1f}s · active degradation multiplier: **{degradation_multiplier:.2f}×**"
+    f"**{circuit_name}** · pit-loss prior: {circuit.pit_lane_loss:.1f}s · degradation: **{degradation_multiplier:.2f}×** · field gap: **{field_gap:.1f}s/position**"
 )
 
 state = RaceState(
@@ -130,6 +147,8 @@ results, failed_strategies = evaluate_strategies(
     safety_car_probability=sc_probability,
     pit_lane_loss=circuit.pit_lane_loss,
     degradation_multiplier=degradation_multiplier,
+    field_gap_seconds=field_gap,
+    field_uncertainty_seconds=field_uncertainty,
     seed=2026,
 )
 if failed_strategies:
@@ -139,7 +158,7 @@ if not results:
         "No valid strategy could be evaluated. Reset the decision inputs and try again."
     )
     st.stop()
-results.sort(key=lambda x: x.expected_finish)
+results.sort(key=lambda x: x.delta_to_baseline_seconds, reverse=True)
 
 winner = results[0]
 selected_result = next(
@@ -152,15 +171,23 @@ left, right = st.columns((2, 1))
 with left:
     st.plotly_chart(strategy_chart(results[:12]), use_container_width=True)
 with right:
-    st.subheader("Active strategy call")
-    st.metric("Selected", selected_result.strategy.label)
-    st.metric("Expected finish", f"P{selected_result.expected_finish:.1f}")
-    st.metric("Points probability", f"{selected_result.p_points:.0%}")
-    st.caption("Best available call")
-    st.metric("Strategy", winner.strategy.label)
-    st.write(
-        f"Active 80% finish interval: P{selected_result.p10_finish:.0f}–P{selected_result.p90_finish:.0f}"
+    st.subheader("Selected call")
+    st.write(selected_result.strategy.label)
+    metric_a, metric_b = st.columns(2)
+    metric_a.metric(
+        "Time vs stay out", f"{selected_result.delta_to_baseline_seconds:+.1f}s"
     )
+    metric_b.metric(
+        "Chance it beats stay out", f"{selected_result.p_beat_baseline:.0%}"
+    )
+    st.metric("Projected finish", f"P{selected_result.expected_finish:.1f}")
+    st.caption(
+        f"80% range: P{selected_result.p10_finish:.0f}–P{selected_result.p90_finish:.0f}"
+    )
+    st.divider()
+    st.caption("Highest-value call under these assumptions")
+    st.write(winner.strategy.label)
+    st.metric("Value", f"{winner.delta_to_baseline_seconds:+.1f}s")
 
 st.subheader("Candidate details")
 table = pd.DataFrame(
@@ -168,6 +195,8 @@ table = pd.DataFrame(
         {
             "Strategy": r.strategy.label,
             "Expected finish": round(r.expected_finish, 2),
+            "Time vs stay out (s)": round(r.delta_to_baseline_seconds, 2),
+            "Beat stay-out chance": round(r.p_beat_baseline, 3),
             "Points probability": round(r.p_points, 3),
             "P10 finish": r.p10_finish,
             "P90 finish": r.p90_finish,
@@ -177,7 +206,7 @@ table = pd.DataFrame(
 )
 st.dataframe(table, hide_index=True, use_container_width=True)
 st.info(
-    "Circuit values are editable priors. The observation meter overrides the prior with your green-flag tyre-loss reading; recalibrate from sourced session data before treating results as research conclusions."
+    "Accuracy mode: every option shares the same no-stop baseline and safety-car draws. These are scenario estimates, not a claimed live prediction. For a real race, set clean pace, tyre loss, safety-car probability, and field gap from current session data."
 )
 
 st.divider()

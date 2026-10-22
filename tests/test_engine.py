@@ -21,6 +21,15 @@ def test_simulation_has_bounded_positions() -> None:
     assert result.finish_position_samples.min() >= 1
     assert result.finish_position_samples.max() <= 18
     assert 0 <= result.p_points <= 1
+    assert len(result.baseline_time_samples) == 100
+
+
+def test_stay_out_is_neutral_against_its_own_baseline() -> None:
+    result = simulate_strategy(
+        state(), Strategy(None, None, "Stay out"), n_simulations=100
+    )
+    assert result.delta_to_baseline_seconds == pytest.approx(0.0)
+    assert result.p_beat_baseline == 0.0
 
 
 def test_invalid_pit_lap_is_rejected() -> None:

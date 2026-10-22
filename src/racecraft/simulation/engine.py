@@ -39,6 +39,7 @@ class Strategy:
 class StrategyResult:
     strategy: Strategy
     total_time_samples: np.ndarray
+    baseline_time_samples: np.ndarray
     finish_position_samples: np.ndarray
     safety_car_probability: float
 
@@ -57,6 +58,15 @@ class StrategyResult:
     @property
     def p90_finish(self) -> float:
         return float(np.quantile(self.finish_position_samples, 0.90))
+
+    @property
+    def delta_to_baseline_seconds(self) -> float:
+        """Mean time gained (+) or lost (-) versus staying out on current tyres."""
+        return float(np.mean(self.baseline_time_samples - self.total_time_samples))
+
+    @property
+    def p_beat_baseline(self) -> float:
+        return float(np.mean(self.total_time_samples < self.baseline_time_samples))
 
 
 def _lap_time(
@@ -82,6 +92,8 @@ def simulate_strategy(
     pit_lane_loss: float = 22.0,
     traffic_penalty: float = 0.35,
     degradation_multiplier: float = 1.0,
+    field_gap_seconds: float = 1.8,
+    field_uncertainty_seconds: float = 2.5,
     seed: int = 42,
 ) -> StrategyResult:
     """Simulate remaining race time and a calibrated-position proxy.
@@ -93,6 +105,10 @@ def simulate_strategy(
         raise ValueError("safety_car_probability must be between 0 and 1")
     if degradation_multiplier <= 0:
         raise ValueError("degradation_multiplier must be positive")
+    if field_gap_seconds <= 0 or field_uncertainty_seconds < 0:
+        raise ValueError(
+            "field gap and uncertainty must be non-negative, with gap positive"
+        )
     if (
         strategy.pit_lap is not None
         and not state.current_lap < strategy.pit_lap < state.total_laps
@@ -108,7 +124,9 @@ def simulate_strategy(
     rng = np.random.default_rng(seed)
     laps = np.arange(state.current_lap + 1, state.total_laps + 1)
     total = np.zeros(n_simulations)
+    baseline_total = np.zeros(n_simulations)
     tyre_age = np.full(n_simulations, state.tyre_age, dtype=float)
+    baseline_tyre_age = np.full(n_simulations, state.tyre_age, dtype=float)
     compound = state.compound
     sc_triggered = rng.random(n_simulations) < safety_car_probability
     sc_lap = rng.integers(
@@ -134,23 +152,38 @@ def simulate_strategy(
             green_noise,
             degradation_multiplier,
         )
+        baseline_lap_times = _lap_time(
+            state.clean_lap_seconds,
+            baseline_tyre_age,
+            state.compound,
+            green_noise,
+            degradation_multiplier,
+        )
         # SC/VSC reduces pace variation and erases part of an existing pace advantage.
         on_sc = sc_triggered & (np.abs(sc_lap - lap) <= 1)
+        sc_noise = rng.normal(0, 0.2, n_simulations)
         lap_times = np.where(
+            on_sc, state.clean_lap_seconds + 25.0 + sc_noise, lap_times
+        )
+        baseline_lap_times = np.where(
             on_sc,
-            state.clean_lap_seconds + 25.0 + rng.normal(0, 0.2, n_simulations),
-            lap_times,
+            state.clean_lap_seconds + 25.0 + sc_noise,
+            baseline_lap_times,
         )
         total += lap_times + traffic_penalty * (tyre_age < 2)
+        baseline_total += baseline_lap_times + traffic_penalty * (baseline_tyre_age < 2)
         tyre_age += 1
+        baseline_tyre_age += 1
 
-    # 0.8 sec/race is one notional position. Noise acknowledges other cars are not yet jointly simulated.
-    relative = total - np.median(total)
-    position = state.current_position + np.rint(
-        relative / 0.8 + rng.normal(0, 1.15, n_simulations)
-    )
+    # The field baseline is the identical race without a stop. Unlike centering
+    # each strategy around its own median, this preserves meaningful deltas.
+    field_noise = rng.normal(0, field_uncertainty_seconds, n_simulations)
+    relative = total - baseline_total + field_noise
+    position = state.current_position + np.rint(relative / field_gap_seconds)
     position = np.clip(position, 1, state.cars_on_lead_lap).astype(int)
-    return StrategyResult(strategy, total, position, safety_car_probability)
+    return StrategyResult(
+        strategy, total, baseline_total, position, safety_car_probability
+    )
 
 
 def candidate_strategies(state: RaceState, horizon: int = 12) -> list[Strategy]:
