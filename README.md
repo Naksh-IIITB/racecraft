@@ -7,6 +7,8 @@
 ## What works today
 
 - A deterministic, tested race-state engine with tyre degradation, pit loss, traffic penalties, and safety-car scenarios.
+- All 24 venues on the announced 2026 calendar as selectable, editable circuit presets, including a provisional Madrid entry.
+- Quick strategy actions and an optional observed-degradation meter for trackside what-if recalibration.
 - An all-car **digital-twin baseline**: multi-car race state, explicit opponent pit policies, sampled VSC/safety-car events, and replayable trajectories.
 - Monte Carlo comparison of candidate pit windows on laptop CPU.
 - Cached OpenF1 ingestion for 2023+ lap, stint, pit, race-control, and session data.

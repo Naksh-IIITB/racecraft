@@ -2,17 +2,22 @@
 
 Install `racecraft[fastf1]`; FastF1 manages its own cache under the chosen path.
 """
+
 from __future__ import annotations
 
 import argparse
 from pathlib import Path
 
 
-def fetch_session(year: int, round_number: int, output_dir: Path, cache_dir: Path) -> Path:
+def fetch_session(
+    year: int, round_number: int, output_dir: Path, cache_dir: Path
+) -> Path:
     try:
         import fastf1
     except ImportError as error:  # pragma: no cover - depends on optional install
-        raise RuntimeError("Install the optional dependency: pip install -e '.[fastf1]'") from error
+        raise RuntimeError(
+            "Install the optional dependency: pip install -e '.[fastf1]'"
+        ) from error
     fastf1.Cache.enable_cache(str(cache_dir))
     session = fastf1.get_session(year, round_number, "R")
     session.load(telemetry=False, weather=True, messages=True)
@@ -23,7 +28,9 @@ def fetch_session(year: int, round_number: int, output_dir: Path, cache_dir: Pat
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Cache one FastF1 race session as Parquet.")
+    parser = argparse.ArgumentParser(
+        description="Cache one FastF1 race session as Parquet."
+    )
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--round", type=int, required=True)
     parser.add_argument("--out", type=Path, default=Path("data/raw/fastf1"))

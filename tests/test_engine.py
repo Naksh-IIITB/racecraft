@@ -1,6 +1,11 @@
 import pytest
 
-from racecraft.simulation.engine import RaceState, Strategy, candidate_strategies, simulate_strategy
+from racecraft.simulation.engine import (
+    RaceState,
+    Strategy,
+    candidate_strategies,
+    simulate_strategy,
+)
 
 
 def state() -> RaceState:
@@ -8,7 +13,9 @@ def state() -> RaceState:
 
 
 def test_simulation_has_bounded_positions() -> None:
-    result = simulate_strategy(state(), Strategy(34, "HARD", "Pit lap 34 → Hard"), n_simulations=100)
+    result = simulate_strategy(
+        state(), Strategy(34, "HARD", "Pit lap 34 → Hard"), n_simulations=100
+    )
     assert len(result.finish_position_samples) == 100
     assert result.finish_position_samples.min() >= 1
     assert result.finish_position_samples.max() <= 18
@@ -21,4 +28,14 @@ def test_invalid_pit_lap_is_rejected() -> None:
 
 
 def test_candidates_do_not_pit_after_finish() -> None:
-    assert all(x.pit_lap is None or x.pit_lap < state().total_laps for x in candidate_strategies(state()))
+    assert all(
+        x.pit_lap is None or x.pit_lap < state().total_laps
+        for x in candidate_strategies(state())
+    )
+
+
+def test_degradation_multiplier_must_be_positive() -> None:
+    with pytest.raises(ValueError):
+        simulate_strategy(
+            state(), Strategy(None, None, "Stay out"), degradation_multiplier=0
+        )
