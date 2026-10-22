@@ -20,7 +20,13 @@ from racecraft.simulation.engine import (
     candidate_strategies,
     evaluate_strategies,
 )
-from racecraft.simulation.twin import EventHazard, PitPolicy, demo_grid, simulate_twin
+from racecraft.simulation.twin import (
+    EventHazard,
+    PitPolicy,
+    demo_grid,
+    simulate_twin,
+    simulate_twin_ensemble,
+)
 from racecraft.visualization.charts import strategy_chart
 
 st.set_page_config(page_title="RaceCraft Strategy Lab", page_icon="🏁", layout="wide")
@@ -374,37 +380,103 @@ else:
 if snapshot is not None:
     try:
         validate_snapshot(snapshot)
+        rival_policies = policies_from_snapshot(
+            snapshot, current_lap=current_lap, total_laps=total_laps
+        )
         target_driver = st.selectbox(
             "Target car",
             snapshot.driver_id.astype(str).tolist(),
             help="The car whose selected strategy you want to test.",
         )
-        if st.button("Run all-car forecast from snapshot", type="primary"):
+        with st.expander("How rival strategies are handled"):
+            policy_table = pd.DataFrame(
+                [
+                    {
+                        "Car": driver,
+                        "Modelled rival call": (
+                            f"Pit lap {policy.planned_pit_lap} → {policy.next_compound.title()}"
+                            if policy.planned_pit_lap
+                            else "No planned stop"
+                        ),
+                    }
+                    for driver, policy in rival_policies.items()
+                    if driver != target_driver
+                ]
+            )
+            st.caption(
+                "The model runs every car in every scenario. Blank rival plans are inferred from current tyre age and compound; Safety Car windows can pull a scheduled stop forward. Edit `planned_pit_lap` in the snapshot table to override a rival."
+            )
+            st.dataframe(policy_table, hide_index=True, use_container_width=True)
+        field_runs = {
+            "Quick (250 scenarios)": 80,
+            "Balanced (1,000 scenarios)": 200,
+            "Deep (5,000 scenarios)": 500,
+        }[analysis_depth]
+        full_grid = len(snapshot) == 20
+        if not full_grid:
+            st.warning(
+                f"This snapshot has {len(snapshot)} cars. A real F1 expected position needs all 20 cars, so the finish forecast is disabled until the grid is complete."
+            )
+        if st.button(
+            f"Run {field_runs} full-field finish scenarios",
+            type="primary",
+            disabled=not full_grid,
+        ):
             profiles = profiles_from_snapshot(snapshot)
-            policies = policies_from_snapshot(snapshot)
             remaining_laps = total_laps - current_lap
             per_lap_hazard = 1 - (1 - sc_probability) ** (1 / max(remaining_laps, 1))
             target_policy = PitPolicy(
                 selected_strategy.pit_lap, selected_strategy.next_compound or "HARD"
             )
-            snapshot_twin = simulate_twin(
+            snapshot_twin = simulate_twin_ensemble(
                 profiles,
-                policies,
+                rival_policies,
                 total_laps=total_laps,
                 start_lap=current_lap,
                 target_id=target_driver,
                 target_strategy=target_policy,
                 hazard=EventHazard(per_lap_hazard),
+                n_simulations=field_runs,
                 seed=2026,
             )
             target_row = snapshot_twin.classification.query(
                 "driver_id == @target_driver"
             ).iloc[0]
-            one, two = st.columns(2)
-            one.metric("Forecast target finish", f"P{int(target_row.position)}")
-            two.metric("Cars included", len(snapshot_twin.classification))
+            one, two, three = st.columns(3)
+            one.metric(
+                "Expected target finish", f"P{target_row.expected_position:.1f}"
+            )
+            two.metric(
+                "Likely range (80%)",
+                f"P{int(target_row.best_case)}–P{int(target_row.worst_case)}",
+            )
+            three.metric("Points chance", f"{target_row.points_chance:.0%}")
+            st.caption(
+                f"Projected classification from {snapshot_twin.scenario_count} full-field scenarios. This is a scenario distribution, not a promise of a race result."
+            )
+            display_classification = snapshot_twin.classification.rename(
+                columns={
+                    "driver_id": "Car",
+                    "expected_position": "Expected finish",
+                    "median_position": "Most likely finish",
+                    "best_case": "Best 10%",
+                    "worst_case": "Worst 10%",
+                    "points_chance": "Points chance",
+                    "win_chance": "Win chance",
+                }
+            )
             st.dataframe(
-                snapshot_twin.classification, hide_index=True, use_container_width=True
+                display_classification,
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "Points chance": st.column_config.ProgressColumn(
+                        format="%d%%", min_value=0, max_value=1
+                    ),
+                    "Win chance": st.column_config.ProgressColumn(
+                        format="%d%%", min_value=0, max_value=1
+                    ),
+                },
             )
     except (ValueError, KeyError, pd.errors.ParserError) as error:
         st.error(f"Snapshot could not be used: {error}")

@@ -66,7 +66,9 @@ class StrategyResult:
 
     @property
     def p_beat_baseline(self) -> float:
-        return float(np.mean(self.total_time_samples < self.baseline_time_samples))
+        return float(
+            np.clip(np.mean(self.total_time_samples < self.baseline_time_samples), 0, 1)
+        )
 
 
 def _lap_time(

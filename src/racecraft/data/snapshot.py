@@ -62,12 +62,34 @@ def profiles_from_snapshot(snapshot: pd.DataFrame) -> list[DriverProfile]:
     ]
 
 
-def policies_from_snapshot(snapshot: pd.DataFrame) -> dict[str, PitPolicy]:
-    """Use optional plans when supplied; blank plans mean no scheduled stop."""
+def policies_from_snapshot(
+    snapshot: pd.DataFrame, *, current_lap: int, total_laps: int
+) -> dict[str, PitPolicy]:
+    """Build visible rival pit policies, inferring only a tyre-life baseline.
+
+    A provided `planned_pit_lap` always wins. For an otherwise blank snapshot,
+    the conservative fallback schedules one stop only if the current stint is
+    unlikely to reach the finish according to compound-specific tyre life.
+    """
+    max_stint = {"SOFT": 18, "MEDIUM": 27, "HARD": 36}
     policies: dict[str, PitPolicy] = {}
     for row in snapshot.itertuples(index=False):
         plan = getattr(row, "planned_pit_lap", None)
+        compound = str(row.compound).upper()
+        remaining_laps = total_laps - current_lap
         next_compound = str(getattr(row, "next_compound", "HARD")).upper()
-        pit_lap = int(plan) if pd.notna(plan) else None
+        if pd.notna(plan):
+            pit_lap = int(plan)
+        elif int(row.tyre_age) + remaining_laps > max_stint[compound]:
+            pit_lap = min(
+                total_laps - 1,
+                max(current_lap + 1, current_lap + max_stint[compound] - int(row.tyre_age)),
+            )
+            # A very short final stint is a plausible soft-tyre attack; otherwise
+            # hard is the deliberately conservative default.
+            if total_laps - pit_lap <= 12:
+                next_compound = "SOFT"
+        else:
+            pit_lap = None
         policies[str(row.driver_id)] = PitPolicy(pit_lap, next_compound)
     return policies

@@ -3,6 +3,7 @@ from racecraft.simulation.twin import (
     EventHazard,
     PitPolicy,
     simulate_twin,
+    simulate_twin_ensemble,
 )
 
 
@@ -49,3 +50,26 @@ def test_current_gap_is_preserved_in_all_car_simulation() -> None:
         seed=1,
     )
     assert result.classification.iloc[0].driver_id == "A"
+
+
+def test_ensemble_returns_valid_full_field_position_probabilities() -> None:
+    profiles = [
+        DriverProfile("A", 90.0, 1),
+        DriverProfile("B", 90.2, 2),
+        DriverProfile("C", 90.4, 3),
+    ]
+    result = simulate_twin_ensemble(
+        profiles,
+        {"A": PitPolicy(8), "B": PitPolicy(9), "C": PitPolicy(None)},
+        total_laps=15,
+        start_lap=5,
+        target_id="A",
+        target_strategy=PitPolicy(8),
+        hazard=EventHazard(0.0),
+        n_simulations=10,
+        seed=11,
+    )
+    assert result.scenario_count == 10
+    assert len(result.classification) == 3
+    assert result.classification.points_chance.between(0, 1).all()
+    assert result.classification.win_chance.between(0, 1).all()

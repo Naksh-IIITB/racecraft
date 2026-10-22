@@ -34,7 +34,7 @@ def strategy_chart(results: list) -> object:
         plot_bgcolor="rgba(12,18,29,.68)",
         font={"color": "#e7edf7", "family": "Inter, Arial, sans-serif"},
         title_font={"size": 16, "color": "#65e5d1"},
-        coloraxis_colorbar={"tickformat": ".0%"},
+        coloraxis={"cmin": 0, "cmax": 1, "colorbar": {"tickformat": ".0%"}},
         xaxis={"gridcolor": "rgba(148,163,184,.18)", "zerolinecolor": "#ffbe3d"},
         yaxis={"gridcolor": "rgba(0,0,0,0)"},
     )

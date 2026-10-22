@@ -55,6 +55,14 @@ class TwinResult:
     events: tuple[RaceEvent, ...]
 
 
+@dataclass(frozen=True)
+class TwinEnsembleResult:
+    """Distributional finish forecast from multiple complete-race simulations."""
+
+    classification: pd.DataFrame
+    scenario_count: int
+
+
 class EventHazard:
     """Circuit-aware, calibrated-model placeholder for event-time sampling.
 
@@ -240,6 +248,62 @@ def simulate_twin(
         ["position", "driver_id", "elapsed_seconds", "compound", "tyre_age"]
     ].reset_index(drop=True)
     return TwinResult(classification, laps, pd.DataFrame(pit_log), events)
+
+
+def simulate_twin_ensemble(
+    profiles: list[DriverProfile],
+    policies: dict[str, PitPolicy],
+    *,
+    total_laps: int,
+    start_lap: int,
+    target_id: str,
+    target_strategy: PitPolicy,
+    hazard: EventHazard,
+    n_simulations: int = 200,
+    seed: int = 2026,
+) -> TwinEnsembleResult:
+    """Forecast all cars while sampling race events and rival pit calls."""
+    if n_simulations < 10:
+        raise ValueError("n_simulations must be at least 10")
+    if target_id not in {profile.driver_id for profile in profiles}:
+        raise ValueError("target_id is not in profiles")
+
+    scenario_rows: list[pd.DataFrame] = []
+    for scenario in range(n_simulations):
+        result = simulate_twin(
+            profiles,
+            policies,
+            total_laps=total_laps,
+            start_lap=start_lap,
+            target_id=target_id,
+            target_strategy=target_strategy,
+            hazard=hazard,
+            seed=seed + scenario,
+        )
+        scenario_rows.append(
+            result.classification.assign(scenario=scenario)[
+                ["scenario", "driver_id", "position"]
+            ]
+        )
+
+    positions = pd.concat(scenario_rows, ignore_index=True)
+    grouped = positions.groupby("driver_id")["position"]
+    summary = grouped.agg(
+        expected_position="mean",
+        median_position="median",
+        best_case=lambda values: values.quantile(0.10),
+        worst_case=lambda values: values.quantile(0.90),
+        points_chance=lambda values: (values <= 10).mean(),
+        win_chance=lambda values: (values == 1).mean(),
+    ).reset_index()
+    summary["expected_position"] = summary["expected_position"].round(1)
+    summary["median_position"] = summary["median_position"].round().astype(int)
+    summary["best_case"] = summary["best_case"].round().astype(int)
+    summary["worst_case"] = summary["worst_case"].round().astype(int)
+    summary["points_chance"] = summary["points_chance"].clip(0, 1)
+    summary["win_chance"] = summary["win_chance"].clip(0, 1)
+    summary = summary.sort_values(["expected_position", "driver_id"]).reset_index(drop=True)
+    return TwinEnsembleResult(summary, n_simulations)
 
 
 def demo_grid(size: int = 20) -> tuple[list[DriverProfile], dict[str, PitPolicy]]:
