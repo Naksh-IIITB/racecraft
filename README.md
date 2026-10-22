@@ -62,6 +62,10 @@ The baseline models are deliberately transparent heuristics. The next milestone 
 4. Plug calibrated distributions into the all-car twin, compare policies using common random seeds, and report uncertainty.
 5. Publish a case study only with its assumptions, calibration metrics, source attribution, and known failure modes.
 
+## Screenshot input
+
+On macOS, the dashboard can read an uploaded F1 timing screenshot using Apple's built-in Vision OCR. It extracts visible positions, driver names, gaps, tyre ages, and a best-effort tyre colour. A single image does not reliably reveal every car's clean pace or every tyre icon, so RaceCraft always presents an editable review table before it runs an all-car forecast. Screenshots stay local.
+
 ## Attribution
 
 OpenF1 is unofficial Formula 1 data. Jolpica and FastF1 have their own terms and rate limits. Keep source attribution in any public deployment and cache downloaded data. This repository ships only generated sample data.

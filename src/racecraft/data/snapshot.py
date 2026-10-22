@@ -36,6 +36,13 @@ def validate_snapshot(snapshot: pd.DataFrame) -> None:
         raise ValueError(
             "clean_lap_seconds must be positive and tyre_age cannot be negative"
         )
+    if (
+        snapshot.gap_to_leader_seconds.isna().any()
+        or (snapshot.gap_to_leader_seconds < 0).any()
+    ):
+        raise ValueError(
+            "gap_to_leader_seconds must be a non-negative number for every car"
+        )
     if not set(snapshot.compound.astype(str).str.upper()) <= COMPOUNDS:
         raise ValueError("compound must be SOFT, MEDIUM, or HARD")
 

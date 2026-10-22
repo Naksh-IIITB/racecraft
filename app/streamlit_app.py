@@ -1,4 +1,5 @@
 import sys
+from hashlib import sha256
 from pathlib import Path
 
 import pandas as pd
@@ -11,6 +12,7 @@ from racecraft.data.snapshot import (
     profiles_from_snapshot,
     validate_snapshot,
 )
+from racecraft.ocr.f1_timing import extract_f1_timing_snapshot
 from racecraft.simulation.engine import (
     BASE_DEGRADATION,
     RaceState,
@@ -266,16 +268,66 @@ st.info(
 st.divider()
 st.subheader("Real race snapshot mode")
 st.caption(
-    "Upload a small CSV of the whole field to enable an all-car finish simulation. This is the minimum information needed to avoid fake P1 predictions."
+    "A finish forecast needs every car's current position, gap, pace and tyres. Import a timing screenshot or a CSV, then review the editable table before forecasting."
 )
-snapshot_file = st.file_uploader(
-    "Upload race snapshot CSV",
-    type="csv",
-    help="One row per car. Required: driver_id, position, gap_to_leader_seconds, clean_lap_seconds, tyre_age, compound. Optional: planned_pit_lap, next_compound.",
+snapshot_mode = st.radio(
+    "Snapshot source",
+    ["Timing screenshot", "CSV file"],
+    horizontal=True,
+    help="A screenshot is read locally using Apple Vision on macOS. CSV is best when timing data is already available.",
 )
-if snapshot_file is not None:
-    try:
+snapshot: pd.DataFrame | None = None
+if snapshot_mode == "Timing screenshot":
+    timing_image = st.file_uploader(
+        "Upload an F1 timing screenshot",
+        type=["png", "jpg", "jpeg"],
+        help="Use a sharp leaderboard or tyre screen with all rows visible. The image stays on this computer.",
+    )
+    if timing_image is not None:
+        image_bytes = timing_image.getvalue()
+        image_fingerprint = sha256(image_bytes).hexdigest()
+        st.image(timing_image, caption="Screenshot to read", width=600)
+        if st.button("Read timing screenshot"):
+            try:
+                with st.spinner("Reading positions, gaps and tyre details locally…"):
+                    st.session_state["timing_snapshot"] = extract_f1_timing_snapshot(
+                        image_bytes, float(clean_lap)
+                    )
+                    st.session_state["timing_snapshot_source"] = image_fingerprint
+            except (RuntimeError, ValueError) as error:
+                st.error(f"Could not read this screenshot: {error}")
+        if st.session_state.get("timing_snapshot_source") == image_fingerprint:
+            st.caption(
+                "Review the extracted table. Correct any missing gap or `UNKNOWN` tyre compound before forecasting."
+            )
+            snapshot = st.data_editor(
+                st.session_state["timing_snapshot"],
+                hide_index=True,
+                use_container_width=True,
+                key="timing_snapshot_editor",
+                column_config={
+                    "compound": st.column_config.SelectboxColumn(
+                        "Compound", options=["SOFT", "MEDIUM", "HARD", "UNKNOWN"]
+                    ),
+                    "clean_lap_seconds": st.column_config.NumberColumn(
+                        "Clean lap (sec)", min_value=1.0
+                    ),
+                    "gap_to_leader_seconds": st.column_config.NumberColumn(
+                        "Gap to leader (sec)", min_value=0.0
+                    ),
+                },
+            )
+else:
+    snapshot_file = st.file_uploader(
+        "Upload race snapshot CSV",
+        type="csv",
+        help="Required: driver_id, position, gap_to_leader_seconds, clean_lap_seconds, tyre_age, compound. Optional: planned_pit_lap, next_compound.",
+    )
+    if snapshot_file is not None:
         snapshot = pd.read_csv(snapshot_file)
+
+if snapshot is not None:
+    try:
         validate_snapshot(snapshot)
         target_driver = st.selectbox(
             "Target car",
@@ -316,7 +368,9 @@ else:
         "driver_id,position,gap_to_leader_seconds,clean_lap_seconds,tyre_age,compound\nTARGET,8,18.2,77.8,18,MEDIUM",
         language="csv",
     )
-    st.caption("Example file: data/sample/race_snapshot_example.csv")
+    st.caption(
+        "Need a CSV instead? Example file: data/sample/race_snapshot_example.csv"
+    )
 
 with st.expander("Developer demo: synthetic all-car control room"):
     st.caption(
