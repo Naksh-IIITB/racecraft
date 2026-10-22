@@ -35,3 +35,17 @@ def test_target_policy_changes_its_pit_log() -> None:
         seed=7,
     )
     assert result.pit_log.loc[result.pit_log.driver_id == "A", "lap"].iloc[0] == 5
+
+
+def test_current_gap_is_preserved_in_all_car_simulation() -> None:
+    profiles = [
+        DriverProfile("A", 90.0, 1),
+        DriverProfile("B", 90.0, 2, elapsed_offset_seconds=12),
+    ]
+    result = simulate_twin(
+        profiles,
+        {"A": PitPolicy(None), "B": PitPolicy(None)},
+        total_laps=2,
+        seed=1,
+    )
+    assert result.classification.iloc[0].driver_id == "A"

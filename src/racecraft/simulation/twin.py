@@ -24,6 +24,7 @@ class DriverProfile:
     grid_position: int
     compound: Compound = "MEDIUM"
     tyre_age: int = 0
+    elapsed_offset_seconds: float = 0.0
 
 
 @dataclass(frozen=True)
@@ -166,7 +167,7 @@ def simulate_twin(
         p.driver_id: {
             "age": p.tyre_age,
             "compound": p.compound,
-            "elapsed": 0.0,
+            "elapsed": p.elapsed_offset_seconds,
             "stops": 0,
         }
         for p in profiles

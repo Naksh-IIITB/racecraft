@@ -6,6 +6,11 @@ import streamlit as st
 
 sys.path.insert(0, str(Path(__file__).parents[1] / "src"))
 from racecraft.circuits import CIRCUITS
+from racecraft.data.snapshot import (
+    policies_from_snapshot,
+    profiles_from_snapshot,
+    validate_snapshot,
+)
 from racecraft.simulation.engine import (
     BASE_DEGRADATION,
     RaceState,
@@ -13,7 +18,7 @@ from racecraft.simulation.engine import (
     candidate_strategies,
     evaluate_strategies,
 )
-from racecraft.simulation.twin import PitPolicy, demo_grid, simulate_twin
+from racecraft.simulation.twin import EventHazard, PitPolicy, demo_grid, simulate_twin
 from racecraft.visualization.charts import strategy_chart
 
 st.set_page_config(page_title="RaceCraft Strategy Lab", page_icon="🏁", layout="wide")
@@ -31,7 +36,7 @@ RaceCraft asks: **would pitting now, later, or not at all be faster than staying
 
 - **Time vs staying out:** positive means the option is projected to save time.
 - **Chance it is faster:** how often the option won in alternate race scenarios.
-- **Projected finish:** a rough position estimate using your current place and gaps around the car. `P1` means first.
+The default screen deliberately does **not** forecast finishing position. It only compares pit calls with staying out. A credible finish forecast needs the pace and gaps of the whole field; use **Real race snapshot mode** below when you have that information.
 
 Results improve when you replace defaults with what you can see in the session: current tyre wear, recent clean pace, and gaps around the car.
 """
@@ -234,10 +239,6 @@ with right:
     metric_b.metric(
         "Chance it beats stay out", f"{selected_result.p_beat_baseline:.0%}"
     )
-    st.metric("Projected finish", f"P{selected_result.expected_finish:.1f}")
-    st.caption(
-        f"80% range: P{selected_result.p10_finish:.0f}–P{selected_result.p90_finish:.0f}"
-    )
     st.divider()
     st.caption("Highest-value call under these assumptions")
     st.write(winner.strategy.label)
@@ -253,57 +254,111 @@ table = pd.DataFrame(
             "Call": r.strategy.label,
             "Saves / loses time": f"{r.delta_to_baseline_seconds:+.1f}s",
             "Chance it is faster": f"{r.p_beat_baseline:.0%}",
-            "Likely finish": f"P{r.expected_finish:.1f}",
-            "Points chance": f"{r.p_points:.0%}",
-            "Finish range": f"P{r.p10_finish:.0f}–P{r.p90_finish:.0f}",
         }
         for r in results[:6]
     ]
 )
 st.dataframe(table, hide_index=True, use_container_width=True)
 st.info(
-    "Accuracy mode: every option shares the same no-stop baseline and safety-car draws. These are scenario estimates, not a claimed live prediction. For a real race, set clean pace, tyre loss, safety-car probability, and field gap from current session data."
+    "Scenario mode compares time, not finishing positions. It shares a baseline and Safety Car draws across every option, but cannot know what the other cars will do."
 )
 
 st.divider()
-st.subheader("Digital twin: synthetic all-car control room")
+st.subheader("Real race snapshot mode")
 st.caption(
-    "A compact 20-car simulator that exposes opponent pit plans and event scenarios. Replace the synthetic grid with sourced, pre-decision race state for research use."
+    "Upload a small CSV of the whole field to enable an all-car finish simulation. This is the minimum information needed to avoid fake P1 predictions."
 )
-target_pit = st.slider(
-    "Target car planned pit lap",
-    current_lap + 1,
-    total_laps - 1,
-    min(current_lap + 5, total_laps - 1),
-    key="twin_pit",
+snapshot_file = st.file_uploader(
+    "Upload race snapshot CSV",
+    type="csv",
+    help="One row per car. Required: driver_id, position, gap_to_leader_seconds, clean_lap_seconds, tyre_age, compound. Optional: planned_pit_lap, next_compound.",
 )
-if st.button("Run all-car counterfactual", type="primary"):
-    profiles, policies = demo_grid()
-    twin = simulate_twin(
-        profiles,
-        policies,
-        total_laps=total_laps,
-        start_lap=current_lap,
-        target_id="CAR-08",
-        target_strategy=PitPolicy(target_pit, "HARD"),
-        seed=2026,
-    )
-    col1, col2 = st.columns(2)
-    with col1:
-        st.write("Final simulated classification")
-        st.dataframe(twin.classification, hide_index=True, use_container_width=True)
-    with col2:
-        st.write("Sampled race events")
-        event_rows = [
-            {"lap": x.lap, "state": x.state, "duration": x.duration_laps}
-            for x in twin.events
-        ]
-        st.dataframe(
-            pd.DataFrame(event_rows)
-            if event_rows
-            else pd.DataFrame([{"lap": "—", "state": "None sampled", "duration": "—"}]),
-            hide_index=True,
-            use_container_width=True,
+if snapshot_file is not None:
+    try:
+        snapshot = pd.read_csv(snapshot_file)
+        validate_snapshot(snapshot)
+        target_driver = st.selectbox(
+            "Target car",
+            snapshot.driver_id.astype(str).tolist(),
+            help="The car whose selected strategy you want to test.",
         )
-    trajectory = twin.laps[twin.laps.driver_id == "CAR-08"]
-    st.line_chart(trajectory.set_index("lap")[["position"]], y_label="Position")
+        if st.button("Run all-car forecast from snapshot", type="primary"):
+            profiles = profiles_from_snapshot(snapshot)
+            policies = policies_from_snapshot(snapshot)
+            remaining_laps = total_laps - current_lap
+            per_lap_hazard = 1 - (1 - sc_probability) ** (1 / max(remaining_laps, 1))
+            target_policy = PitPolicy(
+                selected_strategy.pit_lap, selected_strategy.next_compound or "HARD"
+            )
+            snapshot_twin = simulate_twin(
+                profiles,
+                policies,
+                total_laps=total_laps,
+                start_lap=current_lap,
+                target_id=target_driver,
+                target_strategy=target_policy,
+                hazard=EventHazard(per_lap_hazard),
+                seed=2026,
+            )
+            target_row = snapshot_twin.classification.query(
+                "driver_id == @target_driver"
+            ).iloc[0]
+            one, two = st.columns(2)
+            one.metric("Forecast target finish", f"P{int(target_row.position)}")
+            two.metric("Cars included", len(snapshot_twin.classification))
+            st.dataframe(
+                snapshot_twin.classification, hide_index=True, use_container_width=True
+            )
+    except (ValueError, KeyError, pd.errors.ParserError) as error:
+        st.error(f"Snapshot could not be used: {error}")
+else:
+    st.code(
+        "driver_id,position,gap_to_leader_seconds,clean_lap_seconds,tyre_age,compound\nTARGET,8,18.2,77.8,18,MEDIUM",
+        language="csv",
+    )
+    st.caption("Example file: data/sample/race_snapshot_example.csv")
+
+with st.expander("Developer demo: synthetic all-car control room"):
+    st.caption(
+        "This uses invented cars. It demonstrates the simulator only and is not a prediction."
+    )
+    target_pit = st.slider(
+        "Target car planned pit lap",
+        current_lap + 1,
+        total_laps - 1,
+        min(current_lap + 5, total_laps - 1),
+        key="twin_pit",
+    )
+    run_demo = st.button("Run synthetic demo")
+    if run_demo:
+        profiles, policies = demo_grid()
+        twin = simulate_twin(
+            profiles,
+            policies,
+            total_laps=total_laps,
+            start_lap=current_lap,
+            target_id="CAR-08",
+            target_strategy=PitPolicy(target_pit, "HARD"),
+            seed=2026,
+        )
+        col1, col2 = st.columns(2)
+        with col1:
+            st.write("Final simulated classification")
+            st.dataframe(twin.classification, hide_index=True, use_container_width=True)
+        with col2:
+            st.write("Sampled race events")
+            event_rows = [
+                {"lap": x.lap, "state": x.state, "duration": x.duration_laps}
+                for x in twin.events
+            ]
+            st.dataframe(
+                pd.DataFrame(event_rows)
+                if event_rows
+                else pd.DataFrame(
+                    [{"lap": "—", "state": "None sampled", "duration": "—"}]
+                ),
+                hide_index=True,
+                use_container_width=True,
+            )
+        trajectory = twin.laps[twin.laps.driver_id == "CAR-08"]
+        st.line_chart(trajectory.set_index("lap")[["position"]], y_label="Position")

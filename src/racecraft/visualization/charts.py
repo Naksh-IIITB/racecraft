@@ -8,8 +8,6 @@ def strategy_chart(results: list) -> object:
     rows = [
         {
             "Strategy": r.strategy.label,
-            "Expected finish": r.expected_finish,
-            "Points probability": r.p_points,
             "Delta vs stay out (s)": r.delta_to_baseline_seconds,
             "Beat stay-out probability": r.p_beat_baseline,
             "Best-decile finish": r.p10_finish,
@@ -25,7 +23,7 @@ def strategy_chart(results: list) -> object:
         color="Beat stay-out probability",
         color_continuous_scale="Tealgrn",
         title="Best options — time gained versus staying out",
-        hover_data=["Expected finish", "Points probability"],
+        hover_data=["Beat stay-out probability"],
     ).update_layout(
         height=max(320, 48 * len(frame)),
         coloraxis_colorbar_title="Chance\nto beat\nstay-out",
