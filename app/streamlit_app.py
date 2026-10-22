@@ -79,15 +79,24 @@ degradation_multiplier = (
     if use_observed_deg
     else circuit.degradation_prior
 )
+total_laps = int(total_laps)
+# Hot reload can retain a previous UI state whose lap was legal under the old
+# upper bound. Clamp it before any strategy is built so an end-of-race click
+# never creates an invalid pit lap.
+current_lap = min(max(1, int(lap)), total_laps - 2)
+if current_lap != int(lap):
+    st.warning(
+        f"Decision lap reset to {current_lap}: a pit call must leave at least one racing lap."
+    )
 st.caption(
     f"**{circuit_name}** · pit-loss prior: {circuit.pit_lane_loss:.1f}s · active degradation multiplier: **{degradation_multiplier:.2f}×**"
 )
 
 state = RaceState(
-    int(lap), int(total_laps), int(tyre_age), compound, int(position), float(clean_lap)
+    current_lap, total_laps, int(tyre_age), compound, int(position), float(clean_lap)
 )
-pit_next = int(lap + 1)
-extend_lap = min(int(total_laps - 1), int(lap + 5))
+pit_next = current_lap + 1
+extend_lap = min(total_laps - 1, current_lap + 5)
 quick_calls = {
     "Hold track position — pit next lap for Hard": Strategy(
         pit_next, "HARD", f"Pit lap {pit_next} → Hard"
@@ -110,7 +119,7 @@ selected_call = st.radio(
 selected_strategy = quick_calls[selected_call]
 strategies = [
     selected_strategy,
-    *candidate_strategies(state, horizon=min(10, int(total_laps - lap))),
+    *candidate_strategies(state, horizon=min(10, total_laps - current_lap)),
 ]
 # Preserve order while removing duplicate calls.
 strategies = list({(x.pit_lap, x.next_compound): x for x in strategies}.values())
@@ -174,9 +183,9 @@ st.caption(
 )
 target_pit = st.slider(
     "Target car planned pit lap",
-    int(lap + 1),
-    int(total_laps - 1),
-    min(int(lap + 5), int(total_laps - 1)),
+    current_lap + 1,
+    total_laps - 1,
+    min(current_lap + 5, total_laps - 1),
     key="twin_pit",
 )
 if st.button("Run all-car counterfactual", type="primary"):
@@ -184,8 +193,8 @@ if st.button("Run all-car counterfactual", type="primary"):
     twin = simulate_twin(
         profiles,
         policies,
-        total_laps=int(total_laps),
-        start_lap=int(lap),
+        total_laps=total_laps,
+        start_lap=current_lap,
         target_id="CAR-08",
         target_strategy=PitPolicy(target_pit, "HARD"),
         seed=2026,
