@@ -24,9 +24,38 @@ from racecraft.simulation.twin import EventHazard, PitPolicy, demo_grid, simulat
 from racecraft.visualization.charts import strategy_chart
 
 st.set_page_config(page_title="RaceCraft Strategy Lab", page_icon="🏁", layout="wide")
-st.title("🏁 RaceCraft Strategy Lab")
-st.caption(
-    "Choose a race situation, then compare a pit stop with staying out. This is a what-if tool—not a live team radio prediction."
+st.markdown(
+    """
+    <style>
+      .stApp { background: radial-gradient(circle at 85% 3%, #25395b 0, #101622 34%, #090c13 72%); }
+      [data-testid="stSidebar"] { background: linear-gradient(180deg, #171f2e 0%, #0e1420 100%); }
+      [data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: .55rem; }
+      .racecraft-hero { border: 1px solid rgba(90, 215, 191, .35); border-left: 6px solid #ff4655;
+        border-radius: 18px; padding: 1.35rem 1.6rem; margin-bottom: 1rem;
+        background: linear-gradient(105deg, rgba(255,70,85,.16), rgba(20,211,180,.11) 55%, rgba(24,35,55,.6)); }
+      .racecraft-hero h1 { margin: 0; font-size: clamp(2rem, 4vw, 3.5rem); letter-spacing: -.045em; }
+      .racecraft-kicker { color: #65e5d1; font-size: .76rem; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
+      .racecraft-subtitle { color: #cbd5e1; margin: .4rem 0 0; font-size: 1.06rem; }
+      .racecraft-pill { display: inline-block; margin-top: .8rem; padding: .27rem .7rem; border-radius: 99px;
+        color: #ffced3; background: rgba(255,70,85,.15); font-size: .82rem; font-weight: 650; }
+      [data-testid="stMetric"] { background: rgba(20, 29, 44, .83); border: 1px solid rgba(113, 155, 184, .28);
+        border-radius: 14px; padding: .7rem .85rem; }
+      [data-testid="stMetricValue"] { color: #65e5d1; }
+      [data-testid="stDataFrame"] { border: 1px solid rgba(113, 155, 184, .26); border-radius: 12px; overflow: hidden; }
+      div[data-testid="stButton"] > button[kind="primary"] { background: linear-gradient(105deg, #ff4655, #ff714d); border: 0; font-weight: 750; }
+      div[data-testid="stButton"] > button[kind="secondary"]:hover { border-color: #65e5d1; color: #65e5d1; }
+      .racecraft-call { border-radius: 14px; border: 1px solid rgba(101,229,209,.38); background: rgba(44, 210, 181, .10);
+        padding: .7rem .9rem; margin: .6rem 0 .9rem; color: #e5fffa; }
+      .racecraft-call b { color: #65e5d1; }
+    </style>
+    <section class="racecraft-hero">
+      <div class="racecraft-kicker">Live decision simulator · v0.3</div>
+      <h1>🏁 RaceCraft Strategy Lab</h1>
+      <p class="racecraft-subtitle">Turn race state into a clear pit-call comparison—fast enough for the pit wall, transparent enough for a project demo.</p>
+      <span class="racecraft-pill">What-if analysis, not live team radio</span>
+    </section>
+    """,
+    unsafe_allow_html=True,
 )
 
 with st.expander("New here? Read this first", expanded=True):
@@ -166,8 +195,12 @@ if current_lap != int(lap):
     st.warning(
         f"Decision lap reset to {current_lap}: a pit call must leave at least one racing lap."
     )
-st.caption(
-    f"**{circuit_name}** · pit-loss prior: {circuit.pit_lane_loss:.1f}s · degradation: **{degradation_multiplier:.2f}×** · field gap: **{field_gap:.1f}s/position**"
+st.markdown(
+    f"<div class='racecraft-call'><b>Race state · {circuit_name}</b> &nbsp; | &nbsp; "
+    f"Pit-loss prior <b>{circuit.pit_lane_loss:.1f}s</b> &nbsp; | &nbsp; "
+    f"Tyre loss <b>{degradation_multiplier:.2f}×</b> &nbsp; | &nbsp; "
+    f"Traffic gap <b>{field_gap:.1f}s/position</b></div>",
+    unsafe_allow_html=True,
 )
 
 state = RaceState(
@@ -233,7 +266,15 @@ with left:
     st.plotly_chart(strategy_chart(results[:6]), use_container_width=True)
 with right:
     st.subheader("Selected call")
-    st.write(selected_result.strategy.label)
+    selected_colour = {
+        "SOFT": "🔴",
+        "MEDIUM": "🟡",
+        "HARD": "⚪",
+    }.get(selected_result.strategy.next_compound, "🟢")
+    st.markdown(
+        f"<div class='racecraft-call'>{selected_colour} <b>{selected_result.strategy.label}</b></div>",
+        unsafe_allow_html=True,
+    )
     metric_a, metric_b = st.columns(2)
     metric_a.metric(
         "Time vs stay out", f"{selected_result.delta_to_baseline_seconds:+.1f}s"
@@ -245,6 +286,10 @@ with right:
     st.caption("Highest-value call under these assumptions")
     st.write(winner.strategy.label)
     st.metric("Value", f"{winner.delta_to_baseline_seconds:+.1f}s")
+    if selected_result.delta_to_baseline_seconds > 0:
+        st.success("Green light: this call is faster than staying out in the model.")
+    else:
+        st.warning("Hold: this call loses time versus staying out under these assumptions.")
 
 st.subheader("Candidate details")
 st.caption(
