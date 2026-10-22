@@ -19,7 +19,7 @@ from PIL import Image
 
 POSITION = re.compile(r"^\s*(?:P)?([1-9]|1[0-9]|20)(?:\b|\|)")
 TYRE_AGE = re.compile(r"^\s*([0-9]{1,2})(?:\s|\(|$)")
-NUMBER = re.compile(r"^[+\-]?[0-9]+(?:[.:][0-9]+)?$")
+NUMBER = re.compile(r"^[+\-]?(?:[0-9]+:)?[0-9]+(?:\.[0-9]+)?$")
 
 
 def _vision_blocks(image_path: Path) -> list[dict[str, float | str]]:
@@ -172,18 +172,41 @@ def extract_f1_timing_snapshot(
             (
                 c
                 for c in cells
-                if 0.22 <= float(c["x"]) < 0.38
+                # In F1's desktop board, gap-to-leader sits left of the
+                # interval column. Do not substitute interval when OCR missed
+                # a gap: a blank is safer and explicitly reviewable.
+                if 0.22 <= float(c["x"]) < 0.29
                 and NUMBER.fullmatch(str(c["text"]).replace("+", "").strip())
             ),
             None,
         )
-        gap = (
-            0.0
-            if position == 1
-            else _as_seconds(str(gap_cell["text"]))
-            if gap_cell
-            else float("nan")
+        interval_cell = next(
+            (
+                c
+                for c in cells
+                if 0.29 <= float(c["x"]) < 0.34
+                and NUMBER.fullmatch(str(c["text"]).strip())
+            ),
+            None,
         )
+        if position == 1:
+            gap = 0.0
+        elif gap_cell:
+            gap = _as_seconds(str(gap_cell["text"]))
+        elif (
+            interval_cell
+            and extracted
+            and position == int(extracted[-1]["position"]) + 1
+            and pd.notna(extracted[-1]["gap_to_leader_seconds"])
+        ):
+            # Some F1 layouts visually omit the repeated leader-gap for cars
+            # further down the board. In that case, accumulate the explicit
+            # interval to the preceding classified car.
+            gap = float(extracted[-1]["gap_to_leader_seconds"]) + _as_seconds(
+                str(interval_cell["text"])
+            )
+        else:
+            gap = float("nan")
         tyre_cell = next(
             (
                 c
