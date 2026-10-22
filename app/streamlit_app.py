@@ -19,31 +19,72 @@ from racecraft.visualization.charts import strategy_chart
 st.set_page_config(page_title="RaceCraft Strategy Lab", page_icon="🏁", layout="wide")
 st.title("🏁 RaceCraft Strategy Lab")
 st.caption(
-    "A decision simulator: compare every pit call against the same projected no-stop race baseline."
+    "Choose a race situation, then compare a pit stop with staying out. This is a what-if tool—not a live team radio prediction."
 )
+
+with st.expander("New here? Read this first", expanded=True):
+    st.markdown(
+        """
+**Start with the sidebar:** circuit, current lap, tyre age, and expected clean lap time.
+
+RaceCraft asks: **would pitting now, later, or not at all be faster than staying out?**
+
+- **Time vs staying out:** positive means the option is projected to save time.
+- **Chance it is faster:** how often the option won in alternate race scenarios.
+- **Projected finish:** a rough position estimate using your current place and gaps around the car. `P1` means first.
+
+Results improve when you replace defaults with what you can see in the session: current tyre wear, recent clean pace, and gaps around the car.
+"""
+    )
 
 with st.sidebar:
     st.header("Circuit and decision state")
-    circuit_name = st.selectbox("2026 circuit", list(CIRCUITS), index=7)
+    circuit_name = st.selectbox(
+        "Circuit",
+        list(CIRCUITS),
+        index=7,
+        help="Sets initial assumptions for lap count, pit-lane time, and tyre wear.",
+    )
     circuit = CIRCUITS[circuit_name]
     st.caption(f"{circuit.overtaking} overtaking · editable simulation prior")
     total_laps = st.number_input(
-        "Race distance", min_value=10, value=circuit.total_laps
+        "Race distance",
+        min_value=10,
+        value=circuit.total_laps,
+        help="Total laps in this race. The circuit default is prefilled.",
     )
     lap = st.number_input(
         "Current lap",
         min_value=1,
         max_value=int(total_laps - 2),
         value=min(35, int(total_laps - 2)),
+        help="The lap that has just finished. RaceCraft projects the race from here.",
     )
-    position = st.number_input("Current position", min_value=1, max_value=20, value=8)
-    tyre_age = st.number_input("Tyre age", min_value=0, value=18)
-    compound = st.selectbox("Current compound", ["SOFT", "MEDIUM", "HARD"], index=1)
+    position = st.number_input(
+        "Current position",
+        min_value=1,
+        max_value=20,
+        value=8,
+        help="Your car's current position; P1 means leading.",
+    )
+    tyre_age = st.number_input(
+        "Tyre age",
+        min_value=0,
+        value=18,
+        help="Laps already completed on the current tyre set.",
+    )
+    compound = st.selectbox(
+        "Current compound",
+        ["SOFT", "MEDIUM", "HARD"],
+        index=1,
+        help="The tyre currently on the car.",
+    )
     clean_lap = st.number_input(
         "Expected clean lap (seconds)",
         min_value=60.0,
         value=circuit.clean_lap_seconds,
         step=0.1,
+        help="A normal green-flag lap with no traffic. Use a recent clean lap—not a pit, Safety Car, or traffic-affected lap.",
     )
     sc_probability = st.slider(
         "Safety-car / VSC chance in remaining race",
@@ -51,6 +92,7 @@ with st.sidebar:
         0.8,
         circuit.safety_car_probability,
         0.01,
+        help="Your estimate of a Safety Car or Virtual Safety Car before the finish. A higher value makes waiting for a cheap pit stop more attractive.",
     )
     st.subheader("Tyre observation meter")
     use_observed_deg = st.checkbox("Use observed degradation", value=False)
@@ -87,9 +129,21 @@ with st.sidebar:
         0.5,
         help="How much unknown rival pace and traffic could change the result.",
     )
-    runs = st.select_slider(
-        "Monte Carlo runs", [250, 500, 1000, 2000, 5000], value=1000
+    analysis_depth = st.select_slider(
+        "Analysis depth",
+        options=[
+            "Quick (250 scenarios)",
+            "Balanced (1,000 scenarios)",
+            "Deep (5,000 scenarios)",
+        ],
+        value="Balanced (1,000 scenarios)",
+        help="RaceCraft tries alternate Safety Car and traffic outcomes. More scenarios make percentages steadier but take longer.",
     )
+    runs = {
+        "Quick (250 scenarios)": 250,
+        "Balanced (1,000 scenarios)": 1000,
+        "Deep (5,000 scenarios)": 5000,
+    }[analysis_depth]
 
 degradation_multiplier = (
     observed_deg / BASE_DEGRADATION[compound]
@@ -169,7 +223,7 @@ selected_result = next(
 )
 left, right = st.columns((2, 1))
 with left:
-    st.plotly_chart(strategy_chart(results[:12]), use_container_width=True)
+    st.plotly_chart(strategy_chart(results[:6]), use_container_width=True)
 with right:
     st.subheader("Selected call")
     st.write(selected_result.strategy.label)
@@ -190,18 +244,20 @@ with right:
     st.metric("Value", f"{winner.delta_to_baseline_seconds:+.1f}s")
 
 st.subheader("Candidate details")
+st.caption(
+    "The six strongest choices in plain language. Positive time means faster than staying out."
+)
 table = pd.DataFrame(
     [
         {
-            "Strategy": r.strategy.label,
-            "Expected finish": round(r.expected_finish, 2),
-            "Time vs stay out (s)": round(r.delta_to_baseline_seconds, 2),
-            "Beat stay-out chance": round(r.p_beat_baseline, 3),
-            "Points probability": round(r.p_points, 3),
-            "P10 finish": r.p10_finish,
-            "P90 finish": r.p90_finish,
+            "Call": r.strategy.label,
+            "Saves / loses time": f"{r.delta_to_baseline_seconds:+.1f}s",
+            "Chance it is faster": f"{r.p_beat_baseline:.0%}",
+            "Likely finish": f"P{r.expected_finish:.1f}",
+            "Points chance": f"{r.p_points:.0%}",
+            "Finish range": f"P{r.p10_finish:.0f}–P{r.p90_finish:.0f}",
         }
-        for r in results
+        for r in results[:6]
     ]
 )
 st.dataframe(table, hide_index=True, use_container_width=True)

@@ -20,10 +20,16 @@ def strategy_chart(results: list) -> object:
     frame = pd.DataFrame(rows).sort_values("Delta vs stay out (s)", ascending=False)
     return px.bar(
         frame,
-        x="Strategy",
-        y="Delta vs stay out (s)",
+        y="Strategy",
+        x="Delta vs stay out (s)",
         color="Beat stay-out probability",
         color_continuous_scale="Tealgrn",
-        title="Decision value vs staying out (positive means faster)",
+        title="Best options — time gained versus staying out",
         hover_data=["Expected finish", "Points probability"],
+    ).update_layout(
+        height=max(320, 48 * len(frame)),
+        coloraxis_colorbar_title="Chance\nto beat\nstay-out",
+        xaxis_title="Seconds gained (+) or lost (−)",
+        yaxis_title="",
+        margin={"l": 12, "r": 12, "t": 55, "b": 50},
     )
