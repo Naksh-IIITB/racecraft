@@ -27,7 +27,7 @@ from racecraft.simulation.twin import (
     simulate_twin,
     simulate_twin_ensemble,
 )
-from racecraft.visualization.charts import strategy_chart
+from racecraft.visualization.charts import position_progression_chart, strategy_chart
 
 st.set_page_config(page_title="RaceCraft Strategy Lab", page_icon="🏁", layout="wide")
 st.markdown(
@@ -453,6 +453,21 @@ if snapshot is not None:
             three.metric("Points chance", f"{target_row.points_chance:.0%}")
             st.caption(
                 f"Projected classification from {snapshot_twin.scenario_count} full-field scenarios. This is a scenario distribution, not a promise of a race result."
+            )
+            target_rank = snapshot_twin.classification.index[
+                snapshot_twin.classification.driver_id == target_driver
+            ][0]
+            nearby_drivers = snapshot_twin.classification.iloc[
+                max(0, target_rank - 2) : target_rank + 3
+            ].driver_id.astype(str).tolist()
+            st.plotly_chart(
+                position_progression_chart(
+                    snapshot_twin.position_progression, nearby_drivers, target_driver
+                ),
+                use_container_width=True,
+            )
+            st.caption(
+                "The red line is your selected car when it is in view. A lower number is better; the chart shows average position across the full-field scenarios at each lap."
             )
             display_classification = snapshot_twin.classification.rename(
                 columns={

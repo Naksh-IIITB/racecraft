@@ -73,3 +73,4 @@ def test_ensemble_returns_valid_full_field_position_probabilities() -> None:
     assert len(result.classification) == 3
     assert result.classification.points_chance.between(0, 1).all()
     assert result.classification.win_chance.between(0, 1).all()
+    assert set(result.position_progression.driver_id) == {"A", "B", "C"}

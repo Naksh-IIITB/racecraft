@@ -60,6 +60,7 @@ class TwinEnsembleResult:
     """Distributional finish forecast from multiple complete-race simulations."""
 
     classification: pd.DataFrame
+    position_progression: pd.DataFrame
     scenario_count: int
 
 
@@ -269,6 +270,7 @@ def simulate_twin_ensemble(
         raise ValueError("target_id is not in profiles")
 
     scenario_rows: list[pd.DataFrame] = []
+    progression_rows: list[pd.DataFrame] = []
     for scenario in range(n_simulations):
         result = simulate_twin(
             profiles,
@@ -284,6 +286,9 @@ def simulate_twin_ensemble(
             result.classification.assign(scenario=scenario)[
                 ["scenario", "driver_id", "position"]
             ]
+        )
+        progression_rows.append(
+            result.laps.assign(scenario=scenario)[["scenario", "lap", "driver_id", "position"]]
         )
 
     positions = pd.concat(scenario_rows, ignore_index=True)
@@ -303,7 +308,13 @@ def simulate_twin_ensemble(
     summary["points_chance"] = summary["points_chance"].clip(0, 1)
     summary["win_chance"] = summary["win_chance"].clip(0, 1)
     summary = summary.sort_values(["expected_position", "driver_id"]).reset_index(drop=True)
-    return TwinEnsembleResult(summary, n_simulations)
+    progression = (
+        pd.concat(progression_rows, ignore_index=True)
+        .groupby(["lap", "driver_id"], as_index=False)["position"]
+        .mean()
+        .rename(columns={"position": "expected_position"})
+    )
+    return TwinEnsembleResult(summary, progression, n_simulations)
 
 
 def demo_grid(size: int = 20) -> tuple[list[DriverProfile], dict[str, PitPolicy]]:
