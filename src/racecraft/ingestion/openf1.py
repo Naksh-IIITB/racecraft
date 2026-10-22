@@ -37,8 +37,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Cache selected OpenF1 resources by year.")
     parser.add_argument("--year", type=int, required=True)
     parser.add_argument("--out", type=Path, default=Path("data/raw/openf1"))
+    parser.add_argument("--session-key", type=int, help="Fetch all modelling resources for one known race session")
     args = parser.parse_args()
-    print(fetch("sessions", {"year": args.year}, args.out))
+    if args.session_key:
+        for endpoint in ("laps", "stints", "pit", "race_control"):
+            print(fetch(endpoint, {"session_key": args.session_key}, args.out))
+    else:
+        print(fetch("sessions", {"year": args.year}, args.out))
 
 
 if __name__ == "__main__":

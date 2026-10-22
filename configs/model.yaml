@@ -1,0 +1,6 @@
+pace:
+  feature_columns: [tyre_age, race_progress, clean_lap_median, air_temperature, track_temperature]
+  quantile: 0.5
+safety_car:
+  horizon_laps: 5
+  feature_columns: [race_progress, lap_number, prior_neutralisations, air_temperature, rainfall]

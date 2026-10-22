@@ -29,6 +29,17 @@ For live OpenF1 data, install `requests` (included), then run:
 python -m racecraft.ingestion.openf1 --year 2025 --out data/raw/openf1
 ```
 
+Once you have selected a race session key, fetch the modelling tables and make a leak-safe decision dataset:
+
+```bash
+python -m racecraft.ingestion.openf1 --year 2025 --session-key 1234 --out data/raw/openf1
+python -m racecraft.pipeline \
+  --laps data/raw/openf1/laps_session_key-1234.parquet \
+  --stints data/raw/openf1/stints_session_key-1234.parquet \
+  --race-control data/raw/openf1/race_control_session_key-1234.parquet \
+  --year 2025
+```
+
 Data are cached as Parquet locally and ignored by Git. OpenF1 historical data is available from 2023 onward; see [its API documentation](https://openf1.org/docs/). FastF1 data availability and caching are documented in the [FastF1 project](https://github.com/theOehrly/Fast-F1/tree/main/docs). Do not use the bundled code to scrape sources aggressively.
 
 ## Current scope and research integrity
@@ -38,6 +49,14 @@ The baseline models are deliberately transparent heuristics. The next milestone 
 ## Project layout
 
 `src/racecraft` holds data contracts, ingestion, the simulator, and charts; `app/` is the UI; `tests/` protects the race-state logic; and `docs/` records methodology and data attribution.
+
+## Research workflow
+
+1. Download a small, filtered set of sessions into the local cache.
+2. Build decision rows with features frozen before the next lap.
+3. Evaluate pace and neutralisation probability with season-ordered backtests.
+4. Plug calibrated distributions into the all-car twin, compare policies using common random seeds, and report uncertainty.
+5. Publish a case study only with its assumptions, calibration metrics, source attribution, and known failure modes.
 
 ## Attribution
 

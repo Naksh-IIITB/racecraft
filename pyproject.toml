@@ -13,6 +13,7 @@ dependencies = [
   "plotly>=5.18",
   "pyarrow>=14",
   "requests>=2.31",
+  "scikit-learn>=1.4",
   "streamlit>=1.31",
 ]
 
